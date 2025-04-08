@@ -883,6 +883,10 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if !p.redirectValidator.IsValidRedirect(appRedirect) {
+		appRedirect = "/"
+	}
+
 	// calculate the cookie name
 	cookieName := cookies.GenerateCookieName(p.CookieOptions, nonce)
 	// Try to find the CSRF cookie and decode it
@@ -892,7 +896,14 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		// Try to log the INs and OUTs of OAuthProxy, to be easier to analyse these issues.
 		LoggingCSRFCookiesInOAuthCallback(req, cookieName)
 		logger.Println(req, logger.AuthFailure, "Invalid authentication via OAuth2: unable to obtain CSRF cookie: %s (state=%s)", err, nonce)
-		p.ErrorPage(rw, req, http.StatusForbidden, err.Error(), "Login Failed: Unable to find a valid CSRF token. Please try again.")
+		// Globahack: if the CSRF cookie is not present, it's very possible that the user may have sat on the login page for too long
+		// before they completed login and the CSRF cookie has now expired. Showing them the oauth2-proxy error page in this case is
+		// not very helpful. Instead, we're going to redirect them to the application and let the application send them back to us
+		// again to restart authentication. Hopefully this should be fairly invisible to the user as the identity provider should
+		// see that they've already logged in and let them straight through ...
+		// p.ErrorPage(rw, req, http.StatusForbidden, err.Error(), "Login Failed: Unable to find a valid CSRF token. Please try again.")
+		logger.Println(req, logger.AuthFailure, "Globahack: restarting authentication flow as unable to obtain CSRF cookie")
+		http.Redirect(rw, req, appRedirect, http.StatusFound)
 		return
 	}
 
@@ -923,10 +934,6 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		logger.PrintAuthf(session.Email, req, logger.AuthFailure, "Session validation failed: %s", session)
 		p.ErrorPage(rw, req, http.StatusForbidden, "Session validation failed")
 		return
-	}
-
-	if !p.redirectValidator.IsValidRedirect(appRedirect) {
-		appRedirect = "/"
 	}
 
 	// set cookie, or deny
