@@ -868,7 +868,14 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	errorString := req.Form.Get("error")
-	if errorString != "" {
+	if errorString == "login_link_expired" {
+		// Globahack: this is a special case where Kinde has lost the context of the login link and is asking us to start over.
+		// This can happen if the user bookmarks the login page and comes back to it after a long time, or in a new window or on
+		// a new device. In this case we should just redirect them to the app and let the app send them back to us again to restart
+		// authentication.
+		logger.Println(req, logger.AuthFailure, "Globahack: restarting authentication flow as login link expired")
+		http.Redirect(rw, req, "/", http.StatusFound)
+	} else if errorString != "" {
 		logger.Errorf("Error while parsing OAuth2 callback: %s", errorString)
 		message := fmt.Sprintf("Login Failed: The upstream identity provider returned an error: %s", errorString)
 		// Set the debug message and override the non debug message to be the same for this case
