@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/bitly/go-simplejson"
 
@@ -400,6 +399,7 @@ func (p *AzureProvider) getGroupsFromProfileAPI(ctx context.Context, s *sessions
 }
 
 func getGroupsFromJSON(json *simplejson.Json, graphGroupField string) []string {
+	//nolint:prealloc
 	groups := []string{}
 
 	for i := range json.Get("value").MustArray() {
